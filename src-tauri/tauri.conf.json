@@ -1,0 +1,32 @@
+{
+  "productName": "Damn Simple Invoicing",
+  "version": "0.1.0",
+  "identifier": "com.damn.simpleinvoicing",
+  "build": {
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build",
+    "devUrl": "http://localhost:5173",
+    "frontendDist": "../build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Damn Simple Invoicing",
+        "width": 1440,
+        "height": 960,
+        "minWidth": 1180,
+        "minHeight": 800,
+        "resizable": true,
+        "fullscreen": false,
+        "visible": true
+      }
+    ]
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": []
+  }
+}
+

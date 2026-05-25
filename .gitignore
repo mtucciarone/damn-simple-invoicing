@@ -1,0 +1,25 @@
+.DS_Store
+Thumbs.db
+
+# Node / SvelteKit
+node_modules/
+.svelte-kit/
+build/
+dist/
+.vite/
+coverage/
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/
+target/
+
+# Local database and exports
+*.db
+*.sqlite
+*.sqlite3
+backups/
+exports/
+
+# Logs
+*.log
