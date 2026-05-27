@@ -55,12 +55,12 @@ jobs:
         run: pnpm install
 
       - name: Build and publish release
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__
-          releaseName: Damn Simple Invoicing v__VERSION__
+          tagName: ${{ github.ref_name }}
+          releaseName: Damn Simple Invoicing ${{ github.ref_name }}
           releaseBody: Local-first offline invoicing desktop app.
           releaseDraft: false
           prerelease: false
