@@ -64,5 +64,5 @@ jobs:
           releaseBody: Local-first offline invoicing desktop app.
           releaseDraft: false
           prerelease: false
-          uploadUpdaterJson: false
+          includeUpdaterJson: false
           args: ${{ matrix.args }}
