@@ -174,12 +174,10 @@ export async function openLocalPath(path: string) {
 export async function exportInvoicePdf(
   invoiceId: number,
   outputDir: string | null = null,
-  openAfter = true,
 ) {
-  return invoke<PdfExportResult>('export_invoice_pdf', {
+  return invoke<PdfExportResult>('generate_invoice_preview', {
     invoiceId,
     outputDir,
-    openAfter,
   });
 }
 

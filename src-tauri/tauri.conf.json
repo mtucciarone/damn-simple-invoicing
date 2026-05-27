@@ -21,7 +21,18 @@
         "fullscreen": false,
         "visible": true
       }
-    ]
+    ],
+    "security": {
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "$APPDATA/**",
+          "$HOME/**",
+          "$DOWNLOAD/**",
+          "**"
+        ]
+      }
+    }
   },
   "bundle": {
     "active": true,

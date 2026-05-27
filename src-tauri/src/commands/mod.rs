@@ -289,17 +289,15 @@ pub fn open_local_path(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn export_invoice_pdf(
+pub fn generate_invoice_preview(
     state: State<'_, AppState>,
     invoice_id: i64,
-    output_dir: Option<String>,
-    open_after: bool,
+    output_dir: Option<String>
 ) -> Result<PdfExportResult, String> {
-    to_command_result(services::export_invoice_pdf(
+    to_command_result(services::generate_invoice_preview(
         &state.database,
         invoice_id,
-        output_dir.map(PathBuf::from),
-        open_after,
+        output_dir.map(PathBuf::from)
     ))
 }
 

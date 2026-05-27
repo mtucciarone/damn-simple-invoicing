@@ -205,7 +205,6 @@
 <div class="space-y-6">
   <SectionCard
     title="Business profile"
-    eyebrow="CRUD"
     description="Create one or more local business profiles. The active profile is snapped into new invoices."
   >
     <svelte:fragment slot="actions">

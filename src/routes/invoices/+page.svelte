@@ -1,6 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
 
+  import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { convertFileSrc } from '@tauri-apps/api/core';
+
   import {
     createInvoice,
     deleteInvoice,
@@ -15,7 +18,6 @@
     listBusinesses,
     listClients,
     listInvoices,
-    openInvoicePdf,
     updateInvoice,
   } from '$lib/api/tauri';
   import MoneyValue from '$lib/components/MoneyValue.svelte';
@@ -114,7 +116,6 @@
   };
   let form: InvoiceFormState = emptyInvoiceForm();
   let pdfOutputDir = '';
-  let lastExportedPdfPath: string | null = null;
   let lastExportedHtmlPath: string | null = null;
   let loading = true;
   let saving = false;
@@ -137,7 +138,6 @@
   }
 
   function clearExportArtifacts() {
-    lastExportedPdfPath = null;
     lastExportedHtmlPath = null;
   }
 
@@ -400,29 +400,102 @@
     }
   }
 
-  async function exportSelectedInvoicePdf(openAfter = false) {
-    if (selectedInvoiceId === null) {
-      return;
-    }
-
-    saving = true;
-    error = null;
-    notice = null;
-    try {
-      const result = openAfter
-        ? await openInvoicePdf(selectedInvoiceId, blankToNull(pdfOutputDir))
-        : await exportInvoicePdf(selectedInvoiceId, blankToNull(pdfOutputDir), false);
-      lastExportedPdfPath = result.pdfPath;
-      lastExportedHtmlPath = result.htmlPath;
-      notice = openAfter
-        ? `PDF written to ${result.pdfPath} and opened locally.`
-        : `PDF written to ${result.pdfPath}`;
-    } catch (cause) {
-      error = cause instanceof Error ? cause.message : String(cause);
-    } finally {
-      saving = false;
-    }
+async function exportSelectedInvoicePdf() {
+  if (selectedInvoiceId === null) {
+    return;
   }
+
+  saving = true;
+  error = null;
+  notice = null;
+
+  try {
+    const result = await exportInvoicePdf(
+      selectedInvoiceId,
+      blankToNull(pdfOutputDir),
+    );
+
+    lastExportedHtmlPath = result.htmlPath;
+
+    const normalizedPath =
+      result.htmlPath.replace(/\\/g, '/');
+
+    const invoiceUrl =
+      convertFileSrc(normalizedPath);
+
+    console.log('HTML PATH:', normalizedPath);
+    console.log('INVOICE URL:', invoiceUrl);
+
+    const label =
+      `invoice-print-${Date.now()}`;
+
+    const printWindow = new WebviewWindow(
+      label,
+      {
+        url: invoiceUrl,
+        title: 'Invoice Preview',
+        visible: true,
+        width: 1280,
+        height: 900,
+        center: true,
+        resizable: true,
+        focus: true,
+      },
+    );
+
+    printWindow.once(
+      'tauri://created',
+      async () => {
+        console.log(
+          'Print window created',
+        );
+
+        setTimeout(async () => {
+          try {
+            await printWindow.eval(`
+              console.log("Triggering print");
+              window.focus();
+
+              setTimeout(() => {
+                window.print();
+              }, 500);
+            `);
+          } catch (evalError) {
+            console.error(
+              'Print eval failed:',
+              evalError,
+            );
+          }
+        }, 1500);
+      },
+    );
+
+    printWindow.once(
+      'tauri://error',
+      (event) => {
+        console.error(
+          'Window creation failed:',
+          event,
+        );
+
+        error =
+          `Failed to open preview window: ${event.payload}`;
+      },
+    );
+
+    notice =
+      'Invoice preview opened.';
+  } catch (cause) {
+    console.error(cause);
+
+    error =
+      cause instanceof Error
+        ? cause.message
+        : String(cause);
+  } finally {
+    saving = false;
+  }
+}
 
   async function exportSelectedInvoiceHtml() {
     if (selectedInvoiceId === null) {
@@ -434,7 +507,6 @@
     notice = null;
     try {
       const result = await exportInvoiceHtmlOnly(selectedInvoiceId, blankToNull(pdfOutputDir));
-      lastExportedPdfPath = null;
       lastExportedHtmlPath = result.htmlPath;
       notice = `HTML written to ${result.htmlPath}`;
     } catch (cause) {
@@ -529,7 +601,6 @@
 <div class="space-y-6">
   <SectionCard
     title="Invoices"
-    eyebrow="CRUD"
     description="View invoices in read-only mode, edit drafts, export PDFs, and keep finalized invoices immutable unless you duplicate them first."
   >
     <svelte:fragment slot="actions">
@@ -704,43 +775,32 @@
               </label>
             </div>
             <div class="mt-4 flex flex-wrap gap-2">
-              <button class="button-secondary" disabled={saving || selectedInvoiceId === null} on:click={() => exportSelectedInvoicePdf(false)} type="button">
-                Export PDF
-              </button>
-              <button class="button-secondary" disabled={saving || selectedInvoiceId === null} on:click={() => exportSelectedInvoicePdf(true)} type="button">
-                Export &amp; open PDF
+              <button class="button-secondary" disabled={saving || selectedInvoiceId === null} on:click={() => exportSelectedInvoicePdf()} type="button">
+                Print / Save PDF
               </button>
               <button class="button-secondary" disabled={saving || selectedInvoiceId === null} on:click={exportSelectedInvoiceHtml} type="button">
                 Export HTML
               </button>
             </div>
-            {#if lastExportedPdfPath || lastExportedHtmlPath}
+            {#if lastExportedHtmlPath}
               <div class="mt-4 rounded-2xl bg-white/[0.02] p-4">
                 <p class="label">Last export</p>
                 <div class="mt-3 space-y-2 text-sm text-slate-300">
-                  {#if lastExportedPdfPath}
-                    <p class="break-all"><span class="text-slate-500">PDF:</span> {lastExportedPdfPath}</p>
-                  {/if}
                   {#if lastExportedHtmlPath}
                     <p class="break-all"><span class="text-slate-500">HTML:</span> {lastExportedHtmlPath}</p>
                   {/if}
                 </div>
                 <div class="mt-3 flex flex-wrap gap-2">
-                  {#if lastExportedPdfPath}
-                    <button class="button-secondary" disabled={saving} on:click={() => openExportedPath(lastExportedPdfPath)} type="button">
-                      Open PDF
-                    </button>
-                  {/if}
                   {#if lastExportedHtmlPath}
                     <button class="button-secondary" disabled={saving} on:click={() => openExportedPath(lastExportedHtmlPath)} type="button">
                       Open HTML
                     </button>
                   {/if}
-                  {#if lastExportedPdfPath || lastExportedHtmlPath}
+                  {#if lastExportedHtmlPath}
                     <button
                       class="button-secondary"
                       disabled={saving}
-                      on:click={() => openExportedPath(parentDirectory(lastExportedPdfPath ?? lastExportedHtmlPath ?? ''))}
+                      on:click={() => openExportedPath(parentDirectory(lastExportedHtmlPath))}
                       type="button"
                     >
                       Open folder
@@ -1167,33 +1227,23 @@
                 Export HTML
               </button>
             </div>
-            {#if lastExportedPdfPath || lastExportedHtmlPath}
+            {#if lastExportedHtmlPath}
               <div class="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
                 <p class="label">Last export</p>
                 <div class="mt-3 space-y-2 text-sm text-slate-300">
-                  {#if lastExportedPdfPath}
-                    <p class="break-all"><span class="text-slate-500">PDF:</span> {lastExportedPdfPath}</p>
-                  {/if}
                   {#if lastExportedHtmlPath}
                     <p class="break-all"><span class="text-slate-500">HTML:</span> {lastExportedHtmlPath}</p>
                   {/if}
                 </div>
                 <div class="mt-3 flex flex-wrap gap-2">
-                  {#if lastExportedPdfPath}
-                    <button class="button-secondary" disabled={saving} on:click={() => openExportedPath(lastExportedPdfPath)} type="button">
-                      Open PDF
-                    </button>
-                  {/if}
                   {#if lastExportedHtmlPath}
                     <button class="button-secondary" disabled={saving} on:click={() => openExportedPath(lastExportedHtmlPath)} type="button">
                       Open HTML
                     </button>
-                  {/if}
-                  {#if lastExportedPdfPath || lastExportedHtmlPath}
                     <button
                       class="button-secondary"
                       disabled={saving}
-                      on:click={() => openExportedPath(parentDirectory(lastExportedPdfPath ?? lastExportedHtmlPath ?? ''))}
+                      on:click={() => openExportedPath(parentDirectory(lastExportedHtmlPath))}
                       type="button"
                     >
                       Open folder

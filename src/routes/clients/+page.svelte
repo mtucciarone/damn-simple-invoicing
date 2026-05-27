@@ -212,7 +212,6 @@
 <div class="space-y-6">
   <SectionCard
     title="Clients"
-    eyebrow="CRUD"
     description="Search, view, edit, archive, and review invoice history for each local client record."
   >
     <svelte:fragment slot="actions">

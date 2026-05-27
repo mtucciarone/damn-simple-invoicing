@@ -55,7 +55,7 @@ fn main() {
             commands::export_database_backup,
             commands::restore_database_backup,
             commands::open_local_path,
-            commands::export_invoice_pdf,
+            commands::generate_invoice_preview,
             commands::open_invoice_pdf,
             commands::export_invoice_html_only
         ])

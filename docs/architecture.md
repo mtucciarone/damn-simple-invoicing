@@ -278,7 +278,7 @@ Responsibilities:
 | `delete_payment` | Remove a payment and refresh invoice status |
 | `list_payments` | Search and filter payments |
 | `get_dashboard_summary` | Aggregate dashboard metrics |
-| `export_invoice_pdf` | Render invoice HTML and export a PDF |
+| `generate_invoice_preview` | Render invoice HTML and export a PDF |
 | `open_invoice_pdf` | Export and open the PDF file locally |
 | `export_database_backup` | Copy the SQLite database to a backup path |
 | `restore_database_backup` | Replace the current database from a backup |

@@ -11,15 +11,12 @@ use rusqlite::{named_params, params, types::Type, OptionalExtension, Row};
 use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 use rust_decimal::{Decimal, RoundingStrategy};
 use serde_json::json;
-use url::Url;
 use zip::write::FileOptions;
 use zip::ZipWriter;
 
 use crate::db::Database;
 use crate::error::{AppError, AppResult};
 use crate::models::*;
-
-mod pdf;
 
 fn utc_now() -> String {
     Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true)
@@ -718,7 +715,8 @@ pub fn set_active_business(database: &Database, id: i64) -> AppResult<BusinessPr
         )
         .optional()?;
 
-    let archived = archived.ok_or_else(|| AppError::NotFound(format!("business {id} not found")))?;
+    let archived =
+        archived.ok_or_else(|| AppError::NotFound(format!("business {id} not found")))?;
 
     if archived.is_some() {
         return Err(AppError::Conflict(
@@ -1317,8 +1315,10 @@ pub fn record_payment(database: &Database, input: PaymentInput) -> AppResult<Pay
     let transaction = connection.transaction()?;
     let invoice: InvoiceRecord = load_invoice_detail(&transaction, input.invoice_id)?.invoice;
 
-    if matches!(invoice.status, InvoiceStatus::Draft | InvoiceStatus::Cancelled)
-        || invoice.outstanding_minor <= 0
+    if matches!(
+        invoice.status,
+        InvoiceStatus::Draft | InvoiceStatus::Cancelled
+    ) || invoice.outstanding_minor <= 0
     {
         return Err(AppError::Conflict(
             "record payments against invoices with an outstanding balance only".to_string(),
@@ -1426,7 +1426,10 @@ pub fn update_payment(
     }
 
     let invoice: InvoiceRecord = load_invoice_detail(&transaction, input.invoice_id)?.invoice;
-    if matches!(invoice.status, InvoiceStatus::Draft | InvoiceStatus::Cancelled) {
+    if matches!(
+        invoice.status,
+        InvoiceStatus::Draft | InvoiceStatus::Cancelled
+    ) {
         return Err(AppError::Conflict(
             "record payments against active invoices only".to_string(),
         ));
@@ -2263,6 +2266,118 @@ fn write_invoice_html(
         })
         .collect::<String>();
 
+    let payments_section =
+    if detail.payments.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#"
+      <section>
+        <h2 class="section-title">Payments</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Source</th>
+              <th class="text-right">Paid</th>
+              <th class="text-right">Reporting</th>
+              <th>Reference</th>
+            </tr>
+          </thead>
+          <tbody>
+            {}
+          </tbody>
+        </table>
+      </section>
+"#,
+            payments_rows
+        )
+    };
+
+    let conversions_section =
+    if detail.conversions.is_empty() {
+        String::new()
+    } else {
+        format!(
+            r#"
+      <section>
+        <h2 class="section-title">
+          Conversion History
+        </h2>
+
+        <table>
+          <thead>
+            <tr>
+              <th>Source</th>
+              <th>Target</th>
+              <th>Rate</th>
+              <th class="text-right">
+                Converted
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {}
+          </tbody>
+        </table>
+      </section>
+"#,
+            conversions_rows
+        )
+    };
+
+    let notes_value =
+    detail.invoice.notes
+        .as_deref()
+        .unwrap_or("")
+        .trim();
+
+let payment_terms_value =
+    detail.invoice.payment_terms
+        .as_deref()
+        .unwrap_or("")
+        .trim();
+
+let has_notes =
+    !notes_value.is_empty();
+
+let has_payment_terms =
+    !payment_terms_value.is_empty();
+
+let notes_section =
+    if has_notes || has_payment_terms {
+        format!(
+            r#"
+      <section class="card notes-card">
+        <h2>Notes</h2>
+
+        {}
+
+        {}
+      </section>
+"#,
+            if has_notes {
+                format!(
+                    "<p>{}</p>",
+                    escape_html(notes_value)
+                )
+            } else {
+                String::new()
+            },
+            if has_payment_terms {
+                format!(
+                    "<p><strong>Payment terms:</strong> {}</p>",
+                    escape_html(payment_terms_value)
+                )
+            } else {
+                String::new()
+            }
+        )
+    } else {
+        String::new()
+    };
+
     let html = format!(
         r#"<!doctype html>
 <html lang="en">
@@ -2272,120 +2387,253 @@ fn write_invoice_html(
     <title>Invoice {invoice_number}</title>
     <style>
       :root {{
-        color-scheme: light;
-        --ink: #0b1220;
-        --muted: #4b5563;
-        --line: #dbe3ef;
-        --accent: #0891b2;
-        --paper: #ffffff;
-        --wash: #f8fafc;
-      }}
-      * {{ box-sizing: border-box; }}
-      body {{
-        margin: 0;
-        padding: 32px;
-        font-family: "Avenir Next", "Segoe UI", sans-serif;
-        color: var(--ink);
-        background: linear-gradient(180deg, #f8fafc 0%, #edf3f8 100%);
-      }}
-      .sheet {{
-        max-width: 960px;
-        margin: 0 auto;
-        background: var(--paper);
-        border: 1px solid var(--line);
-        border-radius: 24px;
-        padding: 32px;
-        box-shadow: 0 24px 48px rgba(15, 23, 42, 0.08);
-      }}
-      .top {{
-        display: flex;
-        justify-content: space-between;
-        gap: 24px;
-        margin-bottom: 28px;
-      }}
-      .brand {{
-        display: flex;
-        gap: 16px;
-        align-items: center;
-      }}
-      .brand img {{
-        width: 56px;
-        height: 56px;
-        object-fit: cover;
-        border-radius: 14px;
-      }}
-      .eyebrow {{
-        text-transform: uppercase;
-        letter-spacing: 0.16em;
-        color: var(--muted);
-        font-size: 11px;
-        font-weight: 700;
-      }}
-      h1 {{
-        font-size: 34px;
-        line-height: 1;
-        margin: 8px 0 0;
-      }}
-      .meta-grid {{
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 16px;
-        margin: 24px 0;
-      }}
-      .card {{
-        border: 1px solid var(--line);
-        border-radius: 18px;
-        padding: 16px;
-        background: var(--wash);
-      }}
-      .card h2 {{
-        margin: 0 0 10px;
-        font-size: 14px;
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        color: var(--muted);
-      }}
-      .stack p {{
-        margin: 0 0 6px;
-      }}
-      table {{
-        width: 100%;
-        border-collapse: collapse;
-        margin-top: 12px;
-      }}
-      th, td {{
-        border-bottom: 1px solid var(--line);
-        padding: 12px 10px;
-        text-align: left;
-        vertical-align: top;
-      }}
-      th {{
-        color: var(--muted);
-        text-transform: uppercase;
-        letter-spacing: 0.12em;
-        font-size: 11px;
-      }}
-      .text-right {{
-        text-align: right;
-      }}
-      .summary {{
-        margin-top: 22px;
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: 12px;
-      }}
-      .summary .card strong {{
-        display: block;
-        font-size: 24px;
-        margin-top: 8px;
-      }}
-      .section-title {{
-        margin: 28px 0 10px;
-        font-size: 16px;
-      }}
-      .muted {{
-        color: var(--muted);
-      }}
+  color-scheme: light;
+
+  --ink: #0f172a;
+  --muted: #64748b;
+  --line: #dbe3ef;
+  --accent: #0891b2;
+  --paper: #ffffff;
+  --wash: #f8fafc;
+}}
+
+* {{
+  box-sizing: border-box;
+}}
+
+html {{
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}}
+
+body {{
+  margin: 0;
+  padding: 32px;
+  font-family:
+    "Inter",
+    "Avenir Next",
+    "Segoe UI",
+    sans-serif;
+
+  font-size: 14px;
+  line-height: 1.45;
+
+  color: var(--ink);
+
+  background:
+    linear-gradient(
+      180deg,
+      #f8fafc 0%,
+      #edf3f8 100%
+    );
+}}
+
+.sheet {{
+  max-width: 960px;
+
+  margin: 0 auto;
+
+  background: var(--paper);
+
+  border: 1px solid var(--line);
+
+  border-radius: 24px;
+
+  padding: 32px;
+
+  box-shadow:
+    0 24px 48px rgba(15, 23, 42, 0.08);
+}}
+
+.top {{
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+}}
+
+.brand {{
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}}
+
+.brand img {{
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 14px;
+  flex-shrink: 0;
+}}
+
+.eyebrow {{
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  margin-bottom: 6px;
+}}
+
+h1 {{
+  font-size: 22px;
+  line-height: 1.05;
+  margin: 0;
+}}
+
+.muted {{
+  color: var(--muted);
+  margin-top: 6px;
+  font-size: 13px;
+}}
+
+.meta-grid {{
+  display: grid;
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin: 18px 0 24px;
+}}
+
+.card {{
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 18px;
+  background: var(--wash);
+  page-break-inside: avoid;
+}}
+
+.card h2 {{
+  margin: 0 0 12px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--muted);
+  font-weight: 700;
+}}
+
+.stack p {{
+  margin: 0 0 6px;
+}}
+
+.section-title {{
+  margin: 28px 0 10px;
+  font-size: 16px;
+  font-weight: 700;
+}}
+
+table {{
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 12px;
+  page-break-inside: auto;
+}}
+
+thead {{
+  display: table-header-group;
+}}
+
+tbody {{
+  page-break-inside: auto;
+}}
+
+tr {{
+  page-break-inside: avoid;
+  page-break-after: auto;
+}}
+
+th,
+td {{
+  border-bottom: 1px solid var(--line);
+  padding: 12px 10px;
+  text-align: left;
+  vertical-align: top;
+}}
+
+th {{
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+  font-weight: 700;
+}}
+
+td {{
+  font-size: 13px;
+}}
+
+.text-right {{
+  text-align: right;
+}}
+
+.summary {{
+  margin-top: 24px;
+  display: grid;
+  grid-template-columns:
+    repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  page-break-inside: avoid;
+}}
+
+.summary .card {{
+  background: white;
+}}
+
+.summary .card strong {{
+  display: block;
+  font-size: 12px;
+  line-height: 1.1;
+  margin-top: 10px;
+}}
+
+.notes-card {{
+  margin-top: 24px;
+}}
+
+@media print {{
+  html,
+  body {{
+    background: white !important;
+  }}
+
+  body {{
+    padding: 0 !important;
+    font-size: 12px;
+  }}
+
+  .sheet {{
+    max-width: 100% !important;
+    margin: 0 !important;
+    border: none !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }}
+
+  .card {{
+    background: #f8fafc !important;
+  }}
+
+  section,
+  article,
+  table,
+  tr,
+  td,
+  th,
+  .card,
+  .summary {{
+    page-break-inside: avoid;
+  }}
+
+  .summary {{
+    margin-top: 18px;
+  }}
+
+  @page {{
+    size: A4;
+    margin: 10mm;
+  }}
+}}
     </style>
   </head>
   <body>
@@ -2457,46 +2705,9 @@ fn write_invoice_html(
         <article class="card"><span class="muted">Total</span><strong>{total}</strong></article>
       </section>
 
-      <section>
-        <h2 class="section-title">Payments</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Date</th>
-              <th>Source</th>
-              <th class="text-right">Paid</th>
-              <th class="text-right">Reporting</th>
-              <th>Reference</th>
-            </tr>
-          </thead>
-          <tbody>
-            {payments_rows}
-          </tbody>
-        </table>
-      </section>
-
-      <section>
-        <h2 class="section-title">Conversion History</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Source</th>
-              <th>Target</th>
-              <th>Rate</th>
-              <th class="text-right">Converted</th>
-            </tr>
-          </thead>
-          <tbody>
-            {conversions_rows}
-          </tbody>
-        </table>
-      </section>
-
-      <section class="card" style="margin-top: 24px;">
-        <h2>Notes</h2>
-        <p>{notes}</p>
-        <p><strong>Payment terms:</strong> {payment_terms}</p>
-      </section>
+      {payments_section}
+      {conversions_section}
+      {notes_section}
     </main>
   </body>
 </html>"#,
@@ -2607,71 +2818,25 @@ fn write_invoice_html(
         paid = money_display(detail.invoice.paid_minor),
         outstanding = money_display(detail.invoice.outstanding_minor),
         total = money_display(detail.invoice.total_minor),
-        notes = escape_html(detail.invoice.notes.as_deref().unwrap_or("-")),
-        payment_terms = escape_html(detail.invoice.payment_terms.as_deref().unwrap_or("-")),
         logo_html = logo_data_uri
             .map(|uri| format!(r#"<img alt="logo" src="{uri}" />"#))
             .unwrap_or_else(String::new),
+        payments_section = payments_section,
+        conversions_section = conversions_section,
+        notes_section = notes_section,
     );
 
     fs::write(&html_path, html.as_bytes())?;
     Ok((html_path, pdf_path, html))
 }
 
-fn render_pdf_from_html(html_path: &Path, pdf_path: &Path) -> AppResult<bool> {
-    if let Some(wkhtmltopdf) = find_executable(&["wkhtmltopdf"]) {
-        let status = Command::new(wkhtmltopdf)
-            .arg("--enable-local-file-access")
-            .arg(html_path)
-            .arg(pdf_path)
-            .status()?;
-        if status.success() {
-            return Ok(true);
-        }
-    }
-
-    let browser_candidates = [
-        "google-chrome",
-        "chromium",
-        "chromium-browser",
-        "msedge",
-        "microsoft-edge",
-        "brave",
-        "vivaldi",
-    ];
-
-    if let Some(browser) = find_executable(&browser_candidates) {
-        let file_url = Url::from_file_path(html_path).map_err(|_| {
-            AppError::Pdf("unable to convert invoice HTML path to file URL".to_string())
-        })?;
-        let status = Command::new(browser)
-            .args([
-                "--headless",
-                "--disable-gpu",
-                "--allow-file-access-from-files",
-                "--run-all-compositor-stages-before-draw",
-                "--virtual-time-budget=1000",
-                "--no-first-run",
-                "--no-default-browser-check",
-                &format!("--print-to-pdf={}", pdf_path.to_string_lossy()),
-                file_url.as_str(),
-            ])
-            .status()?;
-        if status.success() {
-            return Ok(true);
-        }
-    }
-
-    Ok(false)
-}
-
-pub fn export_invoice_pdf(
+pub fn generate_invoice_preview(
     database: &Database,
     invoice_id: i64,
     output_dir: Option<PathBuf>,
-    open_after: bool,
 ) -> AppResult<PdfExportResult> {
     let detail = get_invoice(database, invoice_id)?;
+
     let output_dir = output_dir.unwrap_or_else(|| {
         database
             .path()
@@ -2679,16 +2844,12 @@ pub fn export_invoice_pdf(
             .unwrap_or_else(|| Path::new("."))
             .join("exports")
     });
+
     let (html_path, pdf_path, _) = write_invoice_html(&detail, &output_dir)?;
-    if !render_pdf_from_html(&html_path, &pdf_path)? {
-        pdf::write_invoice_pdf_document(&detail, &pdf_path)?;
-    }
-    if open_after {
-        open_local_path(&pdf_path)?;
-    }
 
     Ok(PdfExportResult {
         html_path: html_path.to_string_lossy().to_string(),
+
         pdf_path: pdf_path.to_string_lossy().to_string(),
     })
 }
@@ -2698,7 +2859,7 @@ pub fn open_invoice_pdf(
     invoice_id: i64,
     output_dir: Option<PathBuf>,
 ) -> AppResult<PdfExportResult> {
-    let result = export_invoice_pdf(database, invoice_id, output_dir, true)?;
+    let result = generate_invoice_preview(database, invoice_id, output_dir)?;
     Ok(result)
 }
 
