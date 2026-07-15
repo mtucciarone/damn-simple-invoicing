@@ -1,15 +1,16 @@
 <script lang="ts">
+  import { moneyFormatPreference } from '$lib/stores/settings';
+  import { formatMinorAmount } from '$lib/utils/money';
+
   export let amountMinor: number;
   export let currency: string;
   export let muted = false;
-
-  const formatAmount = (value: number) => (value / 100).toFixed(2);
 </script>
 
 <span class={muted ? 'text-slate-400 tabular-nums' : 'text-white tabular-nums'}>
   {#if currency}
-    {formatAmount(amountMinor)} {currency}
+    {formatMinorAmount(amountMinor, $moneyFormatPreference)} {currency}
   {:else}
-    {formatAmount(amountMinor)}
+    {formatMinorAmount(amountMinor, $moneyFormatPreference)}
   {/if}
 </span>

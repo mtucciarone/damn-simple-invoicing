@@ -7,7 +7,9 @@
   import MoneyValue from '$lib/components/MoneyValue.svelte';
   import SectionCard from '$lib/components/SectionCard.svelte';
   import StatusBadge from '$lib/components/StatusBadge.svelte';
+  import { moneyFormatPreference } from '$lib/stores/settings';
   import type { DashboardSummary } from '$lib/types/domain';
+  import { formatMinorAmount } from '$lib/utils/money';
 
   let dashboard: DashboardSummary | null = null;
   let loading = true;
@@ -24,30 +26,31 @@
   });
 
   const formatCount = (value: number) => new Intl.NumberFormat().format(value);
+  const formatMoney = (amountMinor: number) => formatMinorAmount(amountMinor, $moneyFormatPreference);
 </script>
 
 <div class="space-y-6">
   <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
     <MetricCard
       label="Total invoiced"
-      value={dashboard ? `${(dashboard.totalInvoicedMinor / 100).toFixed(2)}` : '—'}
+      value={dashboard ? formatMoney(dashboard.totalInvoicedMinor) : '—'}
       detail="All non-draft invoices"
       tone="accent"
     />
     <MetricCard
       label="Source paid"
-      value={dashboard ? `${(dashboard.totalPaidMinor / 100).toFixed(2)}` : '—'}
+      value={dashboard ? formatMoney(dashboard.totalPaidMinor) : '—'}
       detail="Raw payment amounts in source currencies"
     />
     <MetricCard
       label="Tax total"
-      value={dashboard ? `${(dashboard.reportedIncomeMinor / 100).toFixed(2)} ${dashboard.reportingCurrencyLabel}` : '—'}
+      value={dashboard ? `${formatMoney(dashboard.reportedIncomeMinor)} ${dashboard.reportingCurrencyLabel}` : '—'}
       detail="Payments converted to the reporting currency"
       tone="warm"
     />
     <MetricCard
       label="Outstanding"
-      value={dashboard ? `${(dashboard.outstandingBalanceMinor / 100).toFixed(2)}` : '—'}
+      value={dashboard ? formatMoney(dashboard.outstandingBalanceMinor) : '—'}
       detail="Open invoice balance"
       tone="warm"
     />

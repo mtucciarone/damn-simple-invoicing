@@ -12,8 +12,9 @@
   import MoneyValue from '$lib/components/MoneyValue.svelte';
   import SectionCard from '$lib/components/SectionCard.svelte';
   import StatusBadge from '$lib/components/StatusBadge.svelte';
+  import { moneyFormatPreference } from '$lib/stores/settings';
   import type { Client, DashboardFilters, DashboardSummary } from '$lib/types/domain';
-  import { blankToNull } from '$lib/utils/money';
+  import { blankToNull, formatMinorAmount } from '$lib/utils/money';
 
   let dashboard: DashboardSummary | null = null;
   let clients: Client[] = [];
@@ -29,6 +30,8 @@
   let exporting = false;
   let error: string | null = null;
   let notice: string | null = null;
+
+  const formatMoney = (amountMinor: number) => formatMinorAmount(amountMinor, $moneyFormatPreference);
 
   function buildFilters(): DashboardFilters {
     return {
@@ -151,10 +154,10 @@
         />
       {:else}
         <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <MetricCard label="Total invoiced" value={(dashboard.totalInvoicedMinor / 100).toFixed(2)} detail="All non-draft invoices" tone="accent" />
-          <MetricCard label="Source paid" value={(dashboard.totalPaidMinor / 100).toFixed(2)} detail="Raw payment amounts in their source currencies" />
-          <MetricCard label={`Reporting total (${dashboard.reportingCurrencyLabel})`} value={`${(dashboard.reportedIncomeMinor / 100).toFixed(2)} ${dashboard.reportingCurrencyLabel}`} detail="All payments converted to the configured reporting currency" tone="warm" />
-          <MetricCard label="Outstanding" value={(dashboard.outstandingBalanceMinor / 100).toFixed(2)} detail="Open invoice balance" tone="warm" />
+          <MetricCard label="Total invoiced" value={formatMoney(dashboard.totalInvoicedMinor)} detail="All non-draft invoices" tone="accent" />
+          <MetricCard label="Source paid" value={formatMoney(dashboard.totalPaidMinor)} detail="Raw payment amounts in their source currencies" />
+          <MetricCard label={`Reporting total (${dashboard.reportingCurrencyLabel})`} value={`${formatMoney(dashboard.reportedIncomeMinor)} ${dashboard.reportingCurrencyLabel}`} detail="All payments converted to the configured reporting currency" tone="warm" />
+          <MetricCard label="Outstanding" value={formatMoney(dashboard.outstandingBalanceMinor)} detail="Open invoice balance" tone="warm" />
           <MetricCard label="Invoice count" value={String(dashboard.invoiceCount)} detail={`${dashboard.overdueInvoiceCount} overdue`} />
         </section>
 

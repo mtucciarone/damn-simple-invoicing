@@ -23,6 +23,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
   import MoneyValue from '$lib/components/MoneyValue.svelte';
   import SectionCard from '$lib/components/SectionCard.svelte';
   import StatusBadge from '$lib/components/StatusBadge.svelte';
+  import { moneyFormatPreference } from '$lib/stores/settings';
   import type {
     BusinessProfile,
     Client,
@@ -55,11 +56,15 @@ import { convertFileSrc } from '@tauri-apps/api/core';
     lineItems: LineItemForm[];
   };
 
+  function formatMoney(amountMinor: number) {
+    return formatMinorAmount(amountMinor, $moneyFormatPreference);
+  }
+
   const blankLineItem = (): LineItemForm => ({
     id: null,
     description: '',
     quantity: '1',
-    rateMajor: '0.00',
+    rateMajor: formatMoney(0),
   });
 
   const addDays = (days: number) => {
@@ -94,7 +99,7 @@ import { convertFileSrc } from '@tauri-apps/api/core';
           id: lineItem.id,
           description: lineItem.description,
           quantity: lineItem.quantity,
-          rateMajor: formatMinorAmount(lineItem.rateMinor),
+          rateMajor: formatMoney(lineItem.rateMinor),
         }))
       : [blankLineItem()],
   });
@@ -1055,7 +1060,7 @@ async function exportSelectedInvoicePdf() {
                       <MoneyValue amountMinor={conversion.convertedAmountMinor} currency={conversion.targetCurrencyLabel} />
                     </div>
                     <p class="mt-2 text-xs text-slate-400">
-                      Rate {conversion.conversionRate} · source amount {formatMinorAmount(conversion.sourceAmountMinor)} · captured {conversion.capturedAt}
+                      Rate {conversion.conversionRate} · source amount {formatMoney(conversion.sourceAmountMinor)} · captured {conversion.capturedAt}
                     </p>
                   </div>
                 {/each}
@@ -1371,7 +1376,7 @@ async function exportSelectedInvoicePdf() {
                         <MoneyValue amountMinor={conversion.convertedAmountMinor} currency={conversion.targetCurrencyLabel} />
                       </div>
                       <p class="mt-2 text-xs text-slate-400">
-                        Rate {conversion.conversionRate} · source amount {formatMinorAmount(conversion.sourceAmountMinor)} · captured {conversion.capturedAt}
+                        Rate {conversion.conversionRate} · source amount {formatMoney(conversion.sourceAmountMinor)} · captured {conversion.capturedAt}
                       </p>
                     </div>
                   {/each}

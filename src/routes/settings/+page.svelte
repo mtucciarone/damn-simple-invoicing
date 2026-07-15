@@ -3,6 +3,7 @@
 
   import { getAppState, getAppSettings, updateAppSettings } from '$lib/api/tauri';
   import SectionCard from '$lib/components/SectionCard.svelte';
+  import { setAppSettings } from '$lib/stores/settings';
   import type { AppBootState } from '$lib/types/domain';
 
   let appState: AppBootState | null = null;
@@ -10,6 +11,7 @@
     invoice_number_prefix: 'INV',
     invoice_sequence: '1',
     reporting_currency_label: 'CAD',
+    money_format: 'us',
     theme: 'dark',
   };
   let loading = true;
@@ -29,8 +31,10 @@
         reporting_currency_label: nextSettings.reporting_currency_label
           ?? nextSettings.default_currency_label
           ?? 'CAD',
+        money_format: nextSettings.money_format ?? 'us',
         theme: nextSettings.theme ?? 'dark',
       };
+      setAppSettings(nextSettings);
     } catch (cause) {
       error = cause instanceof Error ? cause.message : String(cause);
     } finally {
@@ -47,6 +51,7 @@
         invoice_number_prefix: settings.invoice_number_prefix.trim() || 'INV',
         invoice_sequence: settings.invoice_sequence.trim() || '1',
         reporting_currency_label: settings.reporting_currency_label.trim() || 'CAD',
+        money_format: settings.money_format.trim() || 'us',
         theme: settings.theme.trim() || 'dark',
       });
       settings = {
@@ -55,8 +60,10 @@
         reporting_currency_label: nextSettings.reporting_currency_label
           ?? nextSettings.default_currency_label
           ?? 'CAD',
+        money_format: nextSettings.money_format ?? 'us',
         theme: nextSettings.theme ?? 'dark',
       };
+      setAppSettings(nextSettings);
       notice = 'Settings saved locally.';
     } catch (cause) {
       error = cause instanceof Error ? cause.message : String(cause);
@@ -74,7 +81,7 @@
   <SectionCard
     title="Settings"
     eyebrow="App defaults"
-    description="Persist local defaults such as invoice numbering, your tax/reporting currency label, and the saved theme preference."
+    description="Persist local defaults such as invoice numbering, your tax/reporting currency label, the saved money format, and the theme preference."
   >
     <div class="grid gap-6 xl:grid-cols-[1fr_0.85fr]">
       <form class="space-y-4" on:submit|preventDefault={saveSettings}>
@@ -91,6 +98,14 @@
             <span class="label">Reporting currency label</span>
             <input class="input-base" bind:value={settings.reporting_currency_label} placeholder="CAD, USD, EUR, USDC, Credits" />
             <p class="text-xs text-slate-500">Any arbitrary label is valid. This is the currency used for reporting totals and payment conversion snapshots.</p>
+          </label>
+          <label class="space-y-2">
+            <span class="label">Money format</span>
+            <select class="input-base" bind:value={settings.money_format}>
+              <option value="us">1,234.56</option>
+              <option value="eu">1.234,56</option>
+            </select>
+            <p class="text-xs text-slate-500">This controls every cost value in the app, including invoice totals, line items, payments, and exported invoice previews.</p>
           </label>
           <label class="space-y-2">
             <span class="label">Theme</span>

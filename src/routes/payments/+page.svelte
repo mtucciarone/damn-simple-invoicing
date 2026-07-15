@@ -14,6 +14,7 @@
   import MoneyValue from '$lib/components/MoneyValue.svelte';
   import SectionCard from '$lib/components/SectionCard.svelte';
   import StatusBadge from '$lib/components/StatusBadge.svelte';
+  import { moneyFormatPreference } from '$lib/stores/settings';
   import type {
     Client,
     InvoiceSummary,
@@ -35,9 +36,13 @@
     notes: string;
   };
 
+  function formatMoney(amountMinor: number) {
+    return formatMinorAmount(amountMinor, $moneyFormatPreference);
+  }
+
   const emptyPaymentForm = (): PaymentFormState => ({
     invoiceId: '',
-    amountMajor: '0.00',
+    amountMajor: formatMoney(0),
     currencyLabel: '',
     convertedAmountMajor: '',
     conversionRate: '',
@@ -116,9 +121,9 @@
   function paymentToForm(payment: Payment): PaymentFormState {
     return {
       invoiceId: String(payment.invoiceId),
-      amountMajor: formatMinorAmount(payment.amountMinor),
+      amountMajor: formatMoney(payment.amountMinor),
       currencyLabel: payment.currencyLabel,
-      convertedAmountMajor: payment.convertedAmountMinor !== null ? formatMinorAmount(payment.convertedAmountMinor) : '',
+      convertedAmountMajor: payment.convertedAmountMinor !== null ? formatMoney(payment.convertedAmountMinor) : '',
       conversionRate: payment.conversionRate ?? '',
       paymentDate: payment.paymentDate,
       paymentSource: payment.paymentSource,

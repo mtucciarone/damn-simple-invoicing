@@ -4,6 +4,7 @@
 
   import { getAppState } from "$lib/api/tauri";
   import type { AppBootState } from "$lib/types/domain";
+  import { setAppSettings } from '$lib/stores/settings';
 
   type NavItem = {
     href: string;
@@ -28,6 +29,7 @@
   onMount(async () => {
     try {
       appState = await getAppState();
+      setAppSettings(appState.settings);
     } catch (error) {
       appError = error instanceof Error ? error.message : String(error);
     }

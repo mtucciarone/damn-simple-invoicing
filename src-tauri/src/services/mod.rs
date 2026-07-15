@@ -39,10 +39,47 @@ fn parse_decimal(input: &str, label: &str) -> AppResult<Decimal> {
         .map_err(|_| AppError::Validation(format!("{label} must be a valid decimal number")))
 }
 
-fn money_display(amount_minor: i64) -> String {
-    let major = Decimal::from_i64(amount_minor).unwrap_or(Decimal::ZERO)
-        / Decimal::from_i64(100).unwrap_or(Decimal::ONE);
-    format!("{major:.2}")
+#[derive(Clone, Copy)]
+enum MoneyFormatStyle {
+    Us,
+    Eu,
+}
+
+fn money_format_style(connection: &rusqlite::Connection) -> AppResult<MoneyFormatStyle> {
+    let value = get_setting(connection, "money_format", "us")?;
+    Ok(match value.trim().to_ascii_lowercase().as_str() {
+        "eu" => MoneyFormatStyle::Eu,
+        _ => MoneyFormatStyle::Us,
+    })
+}
+
+fn group_digits(value: &str, separator: char) -> String {
+    let mut grouped = String::with_capacity(value.len() + value.len() / 3);
+    let length = value.len();
+
+    for (index, ch) in value.chars().enumerate() {
+        if index > 0 && (length - index) % 3 == 0 {
+            grouped.push(separator);
+        }
+        grouped.push(ch);
+    }
+
+    grouped
+}
+
+fn money_display(amount_minor: i64, style: MoneyFormatStyle) -> String {
+    let absolute = i128::from(amount_minor).abs();
+    let whole = (absolute / 100).to_string();
+    let fraction = (absolute % 100).to_string();
+    let (group_separator, decimal_separator) = match style {
+        MoneyFormatStyle::Us => (',', '.'),
+        MoneyFormatStyle::Eu => ('.', ','),
+    };
+    let prefix = if amount_minor < 0 { "-" } else { "" };
+    format!(
+        "{prefix}{}{decimal_separator}{fraction:0>2}",
+        group_digits(&whole, group_separator)
+    )
 }
 
 fn escape_html(input: &str) -> String {
@@ -2215,6 +2252,7 @@ pub fn open_local_path(path: &Path) -> AppResult<()> {
 fn write_invoice_html(
     detail: &InvoiceDetail,
     output_dir: &Path,
+    money_format: MoneyFormatStyle,
 ) -> AppResult<(PathBuf, PathBuf, String)> {
     fs::create_dir_all(output_dir)?;
     let html_path = output_dir.join(format!("invoice-{}.html", detail.invoice.invoice_number));
@@ -2222,18 +2260,18 @@ fn write_invoice_html(
     let logo_data_uri = render_logo_data_uri(&detail.invoice.business_snapshot.logo_path);
 
     let line_items_rows = detail
-    .line_items
-    .iter()
-    .map(|item| {
-      format!(
-        "<tr><td>{}</td><td class=\"text-right\">{}</td><td class=\"text-right\">{}</td><td class=\"text-right\">{}</td></tr>",
-        escape_html(&item.description),
-        escape_html(&item.quantity),
-        money_display(item.rate_minor),
-        money_display(item.line_total_minor)
-      )
-    })
-    .collect::<String>();
+        .line_items
+        .iter()
+        .map(|item| {
+            format!(
+                "<tr><td>{}</td><td class=\"text-right\">{}</td><td class=\"text-right\">{}</td><td class=\"text-right\">{}</td></tr>",
+                escape_html(&item.description),
+                escape_html(&item.quantity),
+                money_display(item.rate_minor, money_format),
+                money_display(item.line_total_minor, money_format)
+            )
+        })
+        .collect::<String>();
 
     let payments_rows = detail
         .payments
@@ -2243,9 +2281,9 @@ fn write_invoice_html(
                 "<tr><td>{}</td><td>{}</td><td class=\"text-right\">{} {}</td><td class=\"text-right\">{} {}</td><td>{}</td></tr>",
                 escape_html(&payment.payment_date),
                 escape_html(payment.payment_source.as_str()),
-                money_display(payment.amount_minor),
+                money_display(payment.amount_minor, money_format),
                 escape_html(&payment.currency_label),
-                money_display(payment.converted_amount_minor.unwrap_or(payment.amount_minor)),
+                money_display(payment.converted_amount_minor.unwrap_or(payment.amount_minor), money_format),
                 escape_html(&payment.reporting_currency_label),
                 escape_html(payment.transaction_reference_id.as_deref().unwrap_or("-"))
             )
@@ -2261,7 +2299,7 @@ fn write_invoice_html(
                 escape_html(&conversion.source_currency_label),
                 escape_html(&conversion.target_currency_label),
                 escape_html(&conversion.conversion_rate),
-                money_display(conversion.converted_amount_minor)
+                money_display(conversion.converted_amount_minor, money_format)
             )
         })
         .collect::<String>();
@@ -2814,10 +2852,10 @@ td {{
                 .as_deref()
                 .unwrap_or("-")
         ),
-        subtotal = money_display(detail.invoice.subtotal_minor),
-        paid = money_display(detail.invoice.paid_minor),
-        outstanding = money_display(detail.invoice.outstanding_minor),
-        total = money_display(detail.invoice.total_minor),
+        subtotal = money_display(detail.invoice.subtotal_minor, money_format),
+        paid = money_display(detail.invoice.paid_minor, money_format),
+        outstanding = money_display(detail.invoice.outstanding_minor, money_format),
+        total = money_display(detail.invoice.total_minor, money_format),
         logo_html = logo_data_uri
             .map(|uri| format!(r#"<img alt="logo" src="{uri}" />"#))
             .unwrap_or_else(String::new),
@@ -2835,6 +2873,8 @@ pub fn generate_invoice_preview(
     invoice_id: i64,
     output_dir: Option<PathBuf>,
 ) -> AppResult<PdfExportResult> {
+    let connection = database.open()?;
+    let money_format = money_format_style(&connection)?;
     let detail = get_invoice(database, invoice_id)?;
 
     let output_dir = output_dir.unwrap_or_else(|| {
@@ -2845,7 +2885,7 @@ pub fn generate_invoice_preview(
             .join("exports")
     });
 
-    let (html_path, pdf_path, _) = write_invoice_html(&detail, &output_dir)?;
+    let (html_path, pdf_path, _) = write_invoice_html(&detail, &output_dir, money_format)?;
 
     Ok(PdfExportResult {
         html_path: html_path.to_string_lossy().to_string(),
@@ -2868,6 +2908,8 @@ pub fn export_invoice_html_only(
     invoice_id: i64,
     output_dir: Option<PathBuf>,
 ) -> AppResult<PdfExportResult> {
+    let connection = database.open()?;
+    let money_format = money_format_style(&connection)?;
     let detail = get_invoice(database, invoice_id)?;
     let output_dir = output_dir.unwrap_or_else(|| {
         database
@@ -2876,7 +2918,7 @@ pub fn export_invoice_html_only(
             .unwrap_or_else(|| Path::new("."))
             .join("exports")
     });
-    let (html_path, pdf_path, _) = write_invoice_html(&detail, &output_dir)?;
+    let (html_path, pdf_path, _) = write_invoice_html(&detail, &output_dir, money_format)?;
     Ok(PdfExportResult {
         html_path: html_path.to_string_lossy().to_string(),
         pdf_path: pdf_path.to_string_lossy().to_string(),

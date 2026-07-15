@@ -23,3 +23,5 @@ exports/
 
 # Logs
 *.log
+
+.pnpm-store/
